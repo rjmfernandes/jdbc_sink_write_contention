@@ -175,7 +175,7 @@ The first obvious source of the deadlocks is the fact that our topic key is not 
 
 ## Pay attention to concurrent sink connectors
 
-Let's delete our connectors and our table in postgres and recreate the table with an example that matches the key of the topic (in reality you would do the other way around and start with a yopic with a key that it was part of the primary key of the table):
+Let's delete our connectors and our table in postgres and recreate the table with an example that matches the key of the topic (in reality you would probably do the other way around and start with a topic with a key that it was part of the primary key of the table if possible):
 
 ```shell
 curl -X DELETE http://localhost:8083/connectors/my-si1
@@ -233,20 +233,7 @@ curl -i -X PUT -H "Accept:application/json" \
           "value.converter"     : "io.confluent.connect.avro.AvroConverter"}'
 ```
 
-Again some deadlocks should show up in the postgres log:
-
-```
-postgres  | 2024-09-28 14:30:53.102 GMT [682] ERROR:  deadlock detected
-postgres  | 2024-09-28 14:30:53.102 GMT [682] DETAIL:  Process 682 waits for ShareLock on transaction 17645; blocked by process 680.
-postgres  | 	Process 680 waits for ShareLock on transaction 17646; blocked by process 682.
-postgres  | 	Process 682: INSERT INTO "postgres"."public"."customers" ("id","first_name","last_name","email","phone","street_address","state","zip_code","country","country_code") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("id") DO UPDATE SET "first_name"=EXCLUDED."first_name","last_name"=EXCLUDED."last_name","email"=EXCLUDED."email","phone"=EXCLUDED."phone","street_address"=EXCLUDED."street_address","state"=EXCLUDED."state","zip_code"=EXCLUDED."zip_code","country"=EXCLUDED."country","country_code"=EXCLUDED."country_code"
-postgres  | 	Process 680: INSERT INTO "postgres"."public"."customers" ("id","first_name","last_name","email","phone","street_address","state","zip_code","country","country_code") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("id") DO UPDATE SET "first_name"=EXCLUDED."first_name","last_name"=EXCLUDED."last_name","email"=EXCLUDED."email","phone"=EXCLUDED."phone","street_address"=EXCLUDED."street_address","state"=EXCLUDED."state","zip_code"=EXCLUDED."zip_code","country"=EXCLUDED."country","country_code"=EXCLUDED."country_code"
-postgres  | 2024-09-28 14:30:53.102 GMT [682] HINT:  See server log for query details.
-postgres  | 2024-09-28 14:30:53.102 GMT [682] CONTEXT:  while inserting index tuple (156,26) in relation "customers"
-postgres  | 2024-09-28 14:30:53.102 GMT [682] STATEMENT:  INSERT INTO "postgres"."public"."customers" ("id","first_name","last_name","email","phone","street_address","state","zip_code","country","country_code") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("id") DO UPDATE SET "first_name"=EXCLUDED."first_name","last_name"=EXCLUDED."last_name","email"=EXCLUDED."email","phone"=EXCLUDED."phone","street_address"=EXCLUDED."street_address","state"=EXCLUDED."state","zip_code"=EXCLUDED."zip_code","country"=EXCLUDED."country","country_code"=EXCLUDED."country_code"
-```
-
-Again some deadlock may appear cause there are still concurrent independent update coming from the fact we have two streams/sinks going to the database independently and they may be trying to update the same rows.
+Still some deadlocks should show up in the postgres log. That's because there are still concurrent independent updates coming from the fact we have two streams/sinks going to the database independently and they may be trying to update the same rows.
 
 If it was the same data you should definitely try to avoid having both running at same time.
 
@@ -257,7 +244,7 @@ curl -X DELETE http://localhost:8083/connectors/my-sink1
 curl -X DELETE http://localhost:8084/connectors/my-sink1
 ```
 
-But now create only one connector:
+But now we create only one connector:
 
 ```shell
 curl -i -X PUT -H "Accept:application/json" \
@@ -281,11 +268,11 @@ curl -i -X PUT -H "Accept:application/json" \
           "value.converter"     : "io.confluent.connect.avro.AvroConverter"}'
 ```
 
-You should see no deadlocks cause we have only one sink happening and with the right match between topic key and table primary key.
+You should see no deadlocks because we have only one sink happening and with the right match between topic key and table primary key. (Basically following the rule that any field on the key is part of the primary key of the table.)
 
 ## Reduce Concurrency
 
-If you needed for some reason to have both sinks running but want to reduce the chance of possible collisions originating deadlocks you nede to consider reducing concurrency. So for example we could switch for less tasks on each connector.
+If you needed for some reason to have both sinks running but want to reduce the chance of possible collisions originating deadlocks you need to consider reducing concurrency. So for example we could switch to less tasks on each connector.
 
 So first we delete again our connector and our table and recreate the table as before.
 
@@ -340,42 +327,42 @@ You may still get some deadlock although for sure less than before but since we 
 
 ## Max Retries
 
-If you really can't avoid concurrent update on same rows: 
-- Maybe because like just before you have two independent sinks happening which will always eventually compete for same rows.
-- Maybe because you can't change the fact that your topic key is not part of the primary key of the table and so different tasks will try to concurrently update sometimes same rows. (**In this case reducing the number of tasks to 1 would also avoid the problem with corresponding perfomance cost.**)
+If you really can't avoid concurrent updates on same rows: 
+- Maybe because (like just before) you have two independent sinks happening which will always eventually compete for same rows.
+- Maybe because you can't change the fact that your topic key is not part of the primary key of the table and so different tasks will try to concurrently update sometimes the same rows. (**In this case reducing the number of tasks to 1 would also avoid the problem but with corresponding perfomance cost.**)
 
 You can leverage `max.retries` so that errors are retried before giving up. (**Also consider configuring a dead letter queue for those ones!**)
 
-By default `max.retries` is 10 and you can increase although may be sufficient for you. You should use it in conjunction with `retry.backoff.ms` (default to 3000, 3 seconds) which you can also change as per your needs.
+By default `max.retries` is 10 and you can increase although the default may be sufficient for you. You should use it in conjunction with `retry.backoff.ms` (default to 3000, 3 seconds) which you can also change as per your needs.
 
 ## Database overload - Table level locking
 
-Although not as easy to reproduce in a toy example as this one, sometimes your database can get overloaded by too many connector tasks hitting the same table. This can lead to the database switching from row level locking to table locking and deadlocks will explode in those circunstances and hard to manage only with retries...
+Although not as easy to reproduce in a toy example as this one, sometimes your database can get overloaded by too many connector tasks hitting the same table. This can lead to the database switching from row level locking to table locking and deadlocks will explode in those circunstances and it will be hard to manage only with retries...
 
 Different databases will have different conditions under which this can happen so involve your DBA team to monitor the database and investigate the cause of deadlocks.
 
-But in any case as general rule for large topics (and large tables) with many topic partitions you probably don't want to assign a number of sink connector tasks as large your number of partitions and want to use a much smaller number. Remember: in general the level of parallelization that Kafka and Kafka Connect can achieve is way above what your database can handle.
+But in any case as a general rule for large topics (and large tables) with many topic partitions you probably don't want to assign a number of sink connector tasks as large your number of partitions and will want to use a much smaller number. Remember: In general the level of parallelization that Kafka and Kafka Connect can achieve is way above what your database can handle.
 
 ## DB triggers
 
 Database triggers associated with your database can also lead to even more chances of deadlocks, by some of the following reasons:
 - they may compete for common resources as autoincrementing fields
-- they may lead to more database load and make it easier for the database to switch to table level locking and lead to deadlock explosion
+- they may lead to more database load and make it easier for the database to switch to table level locking and so cause deadlock explosion
 
 Pay attention and review any database triggers you may have defined to see if they compete for common resources. And again involve your DBA team to confirm if the level of load you are imposing cause of your DB triggers are leading to deadlock explosion.
 
 ## General Rules
 
-* Confirm your topic key (all fields) are part of the primary key. If any field of your topic key is not part of the primary key this will mean that with multiple sink tasks will compete for same rows and so you will have deadlocks.
+* Confirm your topic key (all fields) are part of the primary key. If any field of your topic key is not part of the primary key this will mean that with multiple sink tasks they will compete for same rows and so you will have deadlocks.
   - If you can't change either the topic key or the database table primary key consider using for your sink connector consider using just 1 task.
   - If the performance burden of using just 1 task is too much leverage `max.retries` and dead letter topic.
-* Confirm if there are multiple independent sinks happening against the same database table. If there are is most likely you will also hit deadlocks.
+* Confirm if there are multiple independent sinks happening against the same database table. If there are then most likely you will hit deadlocks.
   - If you can't change that again leverage `max.retries` and dead letter topic.
 * Review your possible database triggers that may be competing for shared resources.
   - If you can't change the db trigger leading to deadlocks because of common resources competition consider using just 1 task for your sink connector and/or leverage `max.retries` and dead letter topic.
 * Confirm if the cause of the deadlocks is table level locking lead by excessive load on your database and table.
-  - Make sure you work with your DBA team to monitor the sink from the database side and check for any possible to switch to table level locking leading to deadlock explosion.
-  - If that's the case work with the database team to tune the database and/or from Kafka Connect side reduce the number of tasks for reducing the load on database. In any case don't try to use generally the number of partitions of your topic as the number of tasks for your sink connector.
+  - Make sure you work with your DBA team to monitor the sink from the database side and check for any possible switch to table level locking happening and so leading to deadlock explosion.
+  - If that's the case work with the database team to tune the database and/or from Kafka Connect side to reduce the number of tasks and so reducing the load on database. In any case don't try to use generally the number of partitions of your topic as the number of tasks for your sink connector.
   - Also review any possible db triggers that may be leading to excessive load.
 
 ## Cleanup
