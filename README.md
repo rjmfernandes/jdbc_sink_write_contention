@@ -335,6 +335,8 @@ You can leverage `max.retries` so that errors are retried before giving up. (**A
 
 By default `max.retries` is 10 and you can increase although the default may be sufficient for you. You should use it in conjunction with `retry.backoff.ms` (default to 3000, 3 seconds) which you can also change as per your needs.
 
+In general if deadlocks are frequent also combine your tuned `max.retries` with small `batch.size`.
+
 ## Database overload - Table level locking
 
 Although not as easy to reproduce in a toy example as this one, sometimes your database can get overloaded by too many connector tasks hitting the same table. This can lead to the database switching from row level locking to table locking and deadlocks will explode in those circunstances and it will be hard to manage only with retries...
@@ -355,7 +357,7 @@ Pay attention and review any database triggers you may have defined to see if th
 
 * Confirm all fields in your topic key are part of the primary key. If any field of your topic key is not part of the primary key, or if you have no key at all, this will mean that with multiple sink tasks they will compete for same rows and so you will have deadlocks.
   - If you can't change either the topic key or the database table primary key consider using for your sink connector only 1 task.
-  - If the performance burden of using just 1 task is too much leverage `max.retries` and dead letter topic.
+  - If the performance burden of using just 1 task is too much leverage `max.retries` and dead letter topic. In general if deadlocks are frequent also combine with small `batch.size`.
 * Confirm if there are multiple independent sinks happening against the same database table. If there are then most likely you will hit deadlocks.
   - If you can't change that again leverage `max.retries` and dead letter topic.
 * Review your possible database triggers that may be competing for shared resources.
