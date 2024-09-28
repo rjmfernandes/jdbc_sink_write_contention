@@ -353,7 +353,7 @@ Pay attention and review any database triggers you may have defined to see if th
 
 ## General Rules
 
-* Confirm your topic key (all fields) are part of the primary key. If any field of your topic key is not part of the primary key, or if you have nbo key at all, this will mean that with multiple sink tasks they will compete for same rows and so you will have deadlocks.
+* Confirm your topic key (all fields) are part of the primary key. If any field of your topic key is not part of the primary key, or if you have no key at all, this will mean that with multiple sink tasks they will compete for same rows and so you will have deadlocks.
   - If you can't change either the topic key or the database table primary key consider using for your sink connector consider using just 1 task.
   - If the performance burden of using just 1 task is too much leverage `max.retries` and dead letter topic.
 * Confirm if there are multiple independent sinks happening against the same database table. If there are then most likely you will hit deadlocks.
