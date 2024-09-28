@@ -10,7 +10,7 @@
   - [Reduce Concurrency](#reduce-concurrency)
   - [Max Retries](#max-retries)
   - [Database overload - Table level locking](#database-overload---table-level-locking)
-- [DB triggers](#db-triggers)
+  - [DB triggers](#db-triggers)
   - [General Rules](#general-rules)
   - [Cleanup](#cleanup)
 
@@ -356,7 +356,7 @@ Different databases will have different conditions under which this can happen s
 
 But in any case as general rule for large topics (and large tables) with many topic partitions you probably don't want to assign a number of sink connector tasks as large your number of partitions and want to use a much smaller number. Remember: in general the level of parallelization that Kafka and Kafka Connect can achieve is way above what your database can handle.
 
-# DB triggers
+## DB triggers
 
 Database triggers associated with your database can also lead to even more chances of deadlocks, by some of the following reasons:
 - they may compete for common resources as autoincrementing fields
