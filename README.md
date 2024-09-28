@@ -359,7 +359,7 @@ Pay attention and review any database triggers you may have defined to see if th
 * Confirm if there are multiple independent sinks happening against the same database table. If there are then most likely you will hit deadlocks.
   - If you can't change that again leverage `max.retries` and dead letter topic.
 * Review your possible database triggers that may be competing for shared resources.
-  - If you can't change the db trigger leading to deadlocks because of common resources competition consider using just 1 task for your sink connector and/or leverage `max.retries` and dead letter topic.
+  - If your db trigger is leading to deadlocks because of common resources competition and you can't change it, consider using just 1 task for your sink connector and/or leverage `max.retries` and dead letter topic.
 * Confirm if the cause of the deadlocks is table level locking lead by excessive load on your database and table.
   - Make sure you work with your DBA team to monitor the sink from the database side and check for any possible switch to table level locking happening and so leading to deadlock explosion.
   - If that's the case work with the database team to tune the database and/or from Kafka Connect side to reduce the number of tasks and so reducing the load on database. In any case don't try to use generally the number of partitions of your topic as the number of tasks for your sink connector.
